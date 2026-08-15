@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 font-body antialiased;
+  background-image:
+    radial-gradient(at 12% 8%, rgba(168, 85, 247, 0.18) 0px, transparent 55%),
+    radial-gradient(at 92% 12%, rgba(236, 72, 153, 0.14) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(59, 130, 246, 0.16) 0px, transparent 55%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+  .glass-strong {
+    @apply bg-white/10 backdrop-blur-2xl border border-white/15;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl
+           text-sm font-semibold transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-fuchsia-400/60 focus:ring-offset-2
+           focus:ring-offset-ink-950 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white
+           hover:from-fuchsia-400 hover:to-violet-400 shadow-glow;
+  }
+  .btn-ghost {
+    @apply btn bg-white/5 hover:bg-white/10 text-ink-100 border border-white/10;
+  }
+  .btn-outline {
+    @apply btn border border-white/15 hover:border-white/30 text-ink-100;
+  }
+  .card {
+    @apply rounded-2xl glass shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs
+           font-medium bg-white/5 border border-white/10 text-ink-200;
+  }
+  .heading {
+    @apply font-display font-bold tracking-tight;
+  }
+  .skeleton {
+    @apply relative overflow-hidden bg-white/5 rounded-lg;
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.12) 50%,
+      rgba(255, 255, 255, 0.03) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.4s linear infinite;
+  }
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}

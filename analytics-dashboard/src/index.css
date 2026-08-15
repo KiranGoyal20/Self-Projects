@@ -1,0 +1,27 @@
+:root {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+.dashboard-grid .react-grid-item.react-grid-placeholder {
+  background: #0f4c5c;
+  opacity: 0.15;
+  border-radius: 10px;
+}
+
+.dashboard-grid .react-resizable-handle::after {
+  border-color: #0f4c5c !important;
+}
