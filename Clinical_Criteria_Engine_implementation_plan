@@ -1,0 +1,150 @@
+# Implementation Plan - Bond Health Clinical Criteria Engine
+
+A full-stack, production-grade **Clinical Criteria Engine** and patient trial recruitment platform for **Bond Health**, built according to the engineering requirements, healthcare interoperability standards (FHIR R4), and AI-assisted screening workflows specified in the job description.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Tech Stack Alignment**:
+> The project will be set up as a modern full-stack web application in a dedicated folder `clinical-criteria-engine` using:
+> - **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Lucide Icons, and modern clinical styling (Tailwind CSS 4 + custom design system tokens).
+> - **Healthcare Data Model**: Standard HL7 FHIR R4 schema models (`Patient`, `Condition`, `Observation`, `MedicationRequest`, `Procedure`, `DocumentReference`).
+> - **Clinical Evaluation Engine**: Deterministic rules engine (LOINC, ICD-10, SNOMED, RxNorm, range & temporal operators) + semantic clinical evidence extraction.
+> - **AI Workflows**: Protocol parsing & criteria extraction, clinical grounding with exact EHR evidence tracing, AI-assisted recruitment SMS/email generation, and an interactive voice screening call simulator (simulating ElevenLabs/Twilio screening agent).
+> - **EHR Pipeline Monitor**: Ingestion pipeline status for Epic, athenahealth, eClinicalWorks, and OncoEMR with retry logic, rate limit telemetry, and pagination tracking.
+
+> [!NOTE]
+> The engine will include rich, preloaded clinical trial protocols (e.g. *Phase III Advanced Non-Small Cell Lung Cancer with EGFR/PD-L1 biomarkers*, *Type 2 Diabetes with CKD*, and *CAR-T Relapsed DLBCL*) and a synthetic cohort of 12+ realistic FHIR R4 patients with diverse clinical histories, lab values, and progress notes to demonstrate edge cases, pass/fail evaluations, and clinician audit trails out of the box. Users can also add custom trials, criteria, and patients, or upload FHIR JSON bundles.
+
+---
+
+## Open Questions
+
+None at this stage. All requirements from the job description are comprehensively addressed in this design.
+
+---
+
+## Proposed Changes
+
+### Project Setup & Configuration
+#### [NEW] `clinical-criteria-engine/package.json`
+- Next.js 16, React 19, Lucide React, Zod (schema validation), Tailwind CSS 4, date-fns/canvas-confetti/audio helpers.
+
+#### [NEW] `clinical-criteria-engine/tsconfig.json` & `next.config.ts`
+- Strict TypeScript configuration with `@/*` path aliases.
+
+#### [NEW] `clinical-criteria-engine/src/app/globals.css`
+- Healthcare & clinical SaaS design system: slate/indigo/teal palette, glassmorphism cards, dense clinical table typography, status badges, evidence highlight styling, micro-animations.
+
+---
+
+### Core Data Models & FHIR R4 Engine
+#### [NEW] `src/types/fhir.ts`
+- Types for FHIR R4 resources: `FHIRPatient`, `FHIRCondition` (ICD-10, SNOMED, verificationStatus, onsetDate), `FHIRObservation` (LOINC, valueQuantity, unit, referenceRange, interpretation, effectiveDateTime), `FHIRMedicationRequest` (RxNorm, dosage, authoredOn), `FHIRProcedure`, `FHIRDocumentReference` (unstructured clinical encounter notes).
+
+#### [NEW] `src/types/protocol.ts`
+- Protocol definitions: Trial metadata (NCT ID, Phase, Indication, Sponsor, Target Enrollment), Criteria structure:
+  - `CriterionType`: `INCLUSION` | `EXCLUSION`
+  - `Category`: `DEMOGRAPHICS` | `CONDITION` | `LABORATORY` | `MEDICATION` | `PROCEDURE` | `CLINICAL_NOTE`
+  - `RuleDefinition`: field, code, operator (`>=`, `<=`, `==`, `BETWEEN`, `EXISTS`, `NOT_EXISTS`, `WITHIN_DAYS`), threshold, unit, temporal constraint.
+  - `EvaluationResult`: `PASS` | `FAIL` | `INCONCLUSIVE` | `MANUAL_REVIEW`
+  - `CriterionEvidence`: resourceType, resourceId, displayValue, date, noteExcerpt, confidenceScore, reasoning.
+
+#### [NEW] `src/types/recruitment.ts`
+- Patient recruitment pipeline status (`IDENTIFIED`, `ELIGIBLE`, `PHYSICIAN_CLEARED`, `OUTREACH_PENDING`, `SCREENING_CALL_SCHEDULED`, `CONSENTED`, `ENROLLED`, `DISQUALIFIED`), outreach logs, voice call screening transcripts, audit trail logs.
+
+#### [NEW] `src/types/ehr.ts`
+- EHR connector states for Epic (FHIR R4 US Core), athenahealth (MDR / Bulk Export), eClinicalWorks, OncoEMR (Flatiron). Sync metrics, pagination offsets, rate limits, retry workers.
+
+---
+
+### Criteria Evaluation Engine & AI Ingestion
+#### [NEW] `src/lib/engine/criteriaEngine.ts`
+- The core clinical evaluation algorithm:
+  - Takes a `FHIRPatientRecord` (Patient + Conditions + Labs + Meds + Notes) and a `TrialProtocol`.
+  - Runs each criterion through deterministic rule evaluators with unit conversion (e.g. ANC, Creatinine, eGFR, Platelets, AST/ALT, HbA1c, BP).
+  - Handles temporal evaluation: "No prior chemotherapy within 28 days", "Diagnosed with Type 2 Diabetes > 6 months ago".
+  - Inspects clinical notes for semantic flags (e.g. ECOG performance status, brain metastases negation "no evidence of intracranial disease").
+  - Produces overall patient status: `ELIGIBLE`, `INELIGIBLE`, or `NEEDS_REVIEW`.
+  - Attaches strict, auditable `CriterionEvidence` to each rule result for verification.
+
+#### [NEW] `src/lib/engine/protocolParser.ts`
+- AI & rule-based parser that takes raw clinical trial eligibility text (unstructured protocol synopsis) and parses it into structured inclusion & exclusion criteria with target codes, thresholds, and temporal parameters.
+
+#### [NEW] `src/lib/data/sampleProtocols.ts`
+- 3 comprehensive clinical trials:
+  1. **BOND-001 (NCT05429188)**: Phase III in Advanced Non-Small Cell Lung Cancer (NSCLC) with EGFR Mutation and PD-L1 Expression (includes histology, lab limits: ANC >= 1500, Platelets >= 100k, eGFR >= 60, no active CNS metastases, prior Osimertinib allowed).
+  2. **BOND-002 (NCT04982103)**: Phase II SGLT2 Inhibitor in Type 2 Diabetes with Early Diabetic Nephropathy (HbA1c 7.0 - 10.5%, eGFR 30-90, no prior DKA, age 18-75).
+  3. **BOND-003 (NCT06114920)**: Relapsed/Refractory Diffuse Large B-Cell Lymphoma CAR-T Protocol (CD19+, >= 2 prior systemic lines, ANC >= 1000, no active Hepatitis B/C, LVEF >= 45%).
+
+#### [NEW] `src/lib/data/samplePatients.ts`
+- 12 diverse, realistic synthetic patient records with rich FHIR bundles (demographics, ICD-10 diagnostic histories, longitudinal LOINC lab panels, RxNorm medications, and clinical progress notes). Covers clear matches, edge cases, disqualifications due to lab thresholds or prior drug washouts, and inconclusive cases needing clinical review.
+
+#### [NEW] `src/lib/data/ehrConnectors.ts`
+- Mock EHR provider data, sync status, token refresh state, and pipeline telemetry for Epic, athenahealth, eClinicalWorks, and OncoEMR.
+
+---
+
+### User Interface & Clinical Workflows
+#### [NEW] `src/components/layout/Header.tsx` & `Sidebar.tsx`
+- Bond Health navigation: Protocol Studio, Patient Screening & Matches, EHR Pipeline Hub, Patient Outreach & Voice Agent, Audit Logs & API playground.
+- Quick trial selector, active EHR sync indicator, clinician user profile toggle (Investigator vs Research Coordinator).
+
+#### [NEW] `src/components/protocol/ProtocolDetailView.tsx` & `ProtocolEditorModal.tsx`
+- Interactive protocol viewer with tabbed Inclusion / Exclusion criteria.
+- Breakdown of criteria by domain (Demographics, Labs, Conditions, Prior Therapies, Notes).
+- In-place criteria editor & AI Protocol Ingestion modal: paste raw protocol text and see the engine convert it to structured JSON/rules.
+
+#### [NEW] `src/components/screening/ScreeningDashboard.tsx` & `PatientCohortTable.tsx`
+- Core screening view: filter patients by Eligibility Status (`All`, `Eligible`, `Ineligible`, `Needs Review`), search by name/MRN, sort by match score.
+- Visual summary stat cards: Total Screened, Match Rate, Review Queue, Outreach Active.
+- Patient row with matched criteria count (e.g. `12/12 Met`, `1 Blocker`), key biomarkers, and quick actions.
+
+#### [NEW] `src/components/screening/PatientEvidenceDrawer.tsx`
+- The centerpiece of clinical review:
+  - Deep-dive into a patient's screening results for a trial.
+  - Side-by-side or stacked view of all Inclusion and Exclusion criteria.
+  - For each criterion: Status pill (PASS, FAIL, REVIEW), matching rule, and **Traceable Clinical Evidence Card** showing the exact source FHIR record (Observation value, reference range, date, ICD-10 code, or clinical note quote).
+  - Clinician Review & Override action: "Verify & Approve", "Override Blocker with Clinical Justification", with digital signature and audit logging.
+
+#### [NEW] `src/components/outreach/OutreachManager.tsx`
+- Patient recruitment pipeline Kanban (Identified -> Cleared -> Contacted -> Voice Screened -> Consented).
+- AI Outreach Message Generator: Generates personalized, patient-centric SMS/Email grounded in protocol rationale.
+- **Interactive AI Voice Screening Call Simulator**:
+  - Live simulated phone call widget with audio wave animation, real-time conversational transcript between "Bond AI Clinical Screener" and the patient.
+  - Tests patient lifestyle questions (e.g., "Are you able to visit the clinic on alternate Wednesdays?"), updates eligibility score in real-time, and generates Cal.com appointment booking link.
+
+#### [NEW] `src/components/ehr/EHRIntegrationHub.tsx`
+- EHR integration monitor showcasing:
+  - 4 provider connectors: Epic (SMART on FHIR), athenahealth (Bulk Data Export), eClinicalWorks, OncoEMR.
+  - Live sync status, pagination offset, API rate limit consumption gauge, token refresh countdown, and error retry queue simulator.
+  - Interactive "Trigger Bulk Sync" and "Upload FHIR Bundle (.json)" feature to screen new custom patient data immediately.
+
+#### [NEW] `src/components/api/OpenApiPlayground.tsx`
+- Interactive API documentation & live tester for backend/partner APIs:
+  - `POST /api/criteria/evaluate`
+  - `POST /api/protocols/parse`
+  - `GET /api/fhir/patients`
+  - `POST /api/outreach/generate-message`
+  - Demonstrating well-defined OpenAPI/Zod specs as highlighted in the job description.
+
+#### [NEW] `src/app/api/...`
+- Next.js server route handlers implementing real backend evaluation, protocol parsing, and patient screening APIs.
+
+---
+
+## Verification Plan
+
+### Automated & Build Verification
+1. `npm run build` or Next.js production build check in `clinical-criteria-engine`.
+2. TypeScript compilation verification (`tsc --noEmit`).
+3. Core criteria engine logic unit tests (verifying range checks, unit conversion, negation, and temporal evaluations).
+
+### Manual & Interactive Verification
+1. **Screening Engine**: Run BOND-001 (NSCLC trial) against the synthetic patient cohort. Verify that patients meeting all lab cutoffs (ANC >= 1500, eGFR >= 60) and EGFR mutation are marked `ELIGIBLE`, patients with brain metastases or prior chemo < 28 days are marked `INELIGIBLE` with clear blocker tags, and missing labs are marked `NEEDS_REVIEW`.
+2. **Evidence Inspection**: Open the Evidence Drawer for an eligible patient and verify that every rule has a direct, linked FHIR resource citation (lab value, date, reference range).
+3. **Clinician Override**: Perform a clinical override on a borderline patient, verify audit trail log entry is created.
+4. **AI Protocol Parser**: Paste clinical criteria text into the Protocol Studio and verify structured criteria rules are generated.
+5. **AI Voice Screening Simulator**: Initiate an interactive screening call, verify simulated voice agent dialogue, questionnaire responses, and recruitment status transition.
+6. **EHR Pipeline Sync**: Trigger a mock bulk FHIR sync for Epic and athenahealth, observe pipeline telemetry, pagination progress, and newly ingested records.
+7. **Browser Recording**: Run the browser subagent to verify visual aesthetics, interactive states, drawers, and responsive behavior.
