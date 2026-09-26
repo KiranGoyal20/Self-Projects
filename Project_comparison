@@ -1,0 +1,449 @@
+# next-quest vs next-quest-nextjs — Complete Comparison
+
+> Both apps look and behave identically. Under the hood they use completely
+> different mental models for how React code is organized, started, and run.
+
+---
+
+## 1. What kind of app each one is
+
+| | `next-quest` | `next-quest-nextjs` |
+|---|---|---|
+| **Type** | React SPA (Single Page App) | Next.js App Router (full-stack framework) |
+| **Build tool** | Vite | Next.js / Turbopack |
+| **Entry point** | `src/main.tsx` | `src/app/layout.tsx` |
+| **Routing** | `react-router-dom` (JS-only, client) | File-system routes inside `src/app/` |
+| **Server** | None — just serves static files | Node.js dev server (can render on server) |
+| **Runs at** | `http://localhost:5173` | `http://localhost:3001` |
+
+---
+
+## 2. File structure side by side
+
+```
+next-quest/src/                     next-quest-nextjs/src/
+├── main.tsx          ←—→           (no equivalent — Next.js does this)
+├── App.tsx           ←—→           (no equivalent — routing is the file system)
+├── index.css         ←—→           app/globals.css
+│
+├── app/                            store/              ← renamed for clarity
+│   ├── store.ts      ←—→           ├── store.ts
+│   └── hooks.ts      ←—→           └── hooks.ts
+│                                   └── StoreProvider.tsx  ← NEW (needed for Next.js)
+│
+├── components/                     components/
+│   ├── Layout.tsx    ←—→           ├── Navbar.tsx      ← split into Navbar
+│   │                 ←—→           app/layout.tsx      ← + root layout
+│   ├── CodeBlock.tsx ←—→           ├── CodeBlock.tsx
+│   ├── CodeEditor.tsx←—→           ├── CodeEditor.tsx  ← uses dynamic import
+│   ├── LessonContent.tsx←—→        ├── LessonContent.tsx
+│   ├── SimulatedBrowser.tsx←—→     ├── SimulatedBrowser.tsx
+│   ├── NotificationStack.tsx←—→    ├── NotificationStack.tsx
+│   ├── SyncIndicator.tsx←—→        ├── SyncIndicator.tsx
+│   ├── SyncEngine.tsx←—→           └── SyncEngine.tsx
+│   └── exercises/    ←—→           └── exercises/      (identical)
+│
+├── pages/                          app/                ← pages become folders
+│   ├── HomePage.tsx  ←—→           ├── page.tsx
+│   ├── RoadmapPage.tsx←—→          ├── learn/page.tsx
+│   ├── LessonPage.tsx←—→           ├── learn/[slug]/page.tsx
+│   ├── BadgesPage.tsx←—→           ├── badges/page.tsx
+│   ├── ChatPage.tsx  ←—→           ├── chat/page.tsx
+│   └── SettingsPage.tsx←—→         └── settings/page.tsx
+│
+├── features/         ←—→           features/           (identical slices)
+├── data/             ←—→           data/               (identical data)
+├── types/            ←—→           types/              (identical types)
+└── utils/            ←—→           utils/              (identical utils)
+```
+
+---
+
+## 3. How the app starts (entry point)
+
+### React SPA (`next-quest`)
+There is one explicit entry file — `main.tsx` — that manually boots everything:
+
+```tsx
+// main.tsx  — YOU write this glue code
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <Provider store={store}>           {/* Redux */}
+      <PersistGate loading={null} persistor={persistor}>  {/* persist */}
+        <App />                        {/* router + pages */}
+      </PersistGate>
+    </Provider>
+  </StrictMode>
+);
+```
+
+### Next.js (`next-quest-nextjs`)
+There is no `main.tsx`. Next.js boots the app itself.
+Your `app/layout.tsx` is the root shell — called once for every request:
+
+```tsx
+// app/layout.tsx  — Next.js calls this automatically
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <StoreProvider>   {/* our custom wrapper = Provider + PersistGate */}
+          <Navbar />
+          <main>{children}</main>   {/* page fills in here */}
+          <NotificationStack />
+          <SyncEngine />
+        </StoreProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+> **Key difference:** In the SPA you write the HTML shell manually. In Next.js
+> the framework owns the HTML shell and you inject into it.
+
+---
+
+## 4. How routing works
+
+### React SPA — one big JS bundle, URL handled in JS
+
+```tsx
+// App.tsx — one file lists every route manually
+<BrowserRouter>
+  <Routes>
+    <Route element={<Layout />}>          {/* shell */}
+      <Route path="/"            element={<HomePage />} />
+      <Route path="/learn"       element={<RoadmapPage />} />
+      <Route path="/learn/:slug" element={<LessonPage />} />
+      <Route path="/badges"      element={<BadgesPage />} />
+      <Route path="/chat"        element={<ChatPage />} />
+      <Route path="/settings"    element={<SettingsPage />} />
+      <Route path="*"            element={<HomePage />} />
+    </Route>
+  </Routes>
+</BrowserRouter>
+```
+
+The browser loads one `index.html` + one `bundle.js`. When you click a link,
+JavaScript swaps the component — **the server is never asked again**.
+
+### Next.js — routing IS the file system
+
+```
+src/app/
+├── page.tsx              →  /
+├── learn/
+│   ├── page.tsx          →  /learn
+│   └── [slug]/
+│       └── page.tsx      →  /learn/anything-here   ← [slug] = dynamic segment
+├── badges/page.tsx       →  /badges
+├── chat/page.tsx         →  /chat
+└── settings/page.tsx     →  /settings
+```
+
+You create a **folder with a `page.tsx`** and the route exists. No registration
+needed anywhere. Dynamic segments use `[square-brackets]` in the folder name.
+
+#### Getting the dynamic slug
+
+| | React SPA | Next.js |
+|---|---|---|
+| **How to get `:slug`** | `const { slug } = useParams()` | `const { slug } = use(params)` (prop passed by framework) |
+| **Where `params` comes from** | React Router hook | Next.js injects as a `Promise<{ slug }>` prop |
+| **Why Promise?** | N/A | Next.js 15+ made params async to support streaming SSR |
+
+---
+
+## 5. Navigating between pages
+
+| Action | React SPA | Next.js |
+|---|---|---|
+| **Render a link** | `<Link to="/learn">` (react-router-dom) | `<Link href="/learn">` (next/link) |
+| **Programmatic nav** | `const nav = useNavigate(); nav("/learn")` | `const router = useRouter(); router.push("/learn")` |
+| **Active link style** | `<NavLink className={({isActive}) => ...}>` | Manual: compare `usePathname()` to href |
+| **Import from** | `react-router-dom` | `next/link`, `next/navigation` |
+
+---
+
+## 6. Redux store — the biggest structural difference
+
+This is the most important technical change between the two projects.
+
+### React SPA — one global singleton
+
+```ts
+// app/store.ts — module-level singleton, created once when the file is imported
+import storage from "redux-persist/lib/storage";  // always localStorage
+
+export const store = configureStore({ ... });      // ← lives forever
+export const persistor = persistStore(store);
+```
+
+Then in `main.tsx`:
+```tsx
+<Provider store={store}>   {/* import the singleton and pass it in */}
+```
+
+This works perfectly in a browser because there's only one tab, one session,
+one localStorage. The store is created once at page load and never recreated.
+
+### Next.js — factory function + provider
+
+```ts
+// store/store.ts — a FUNCTION that creates a store on demand
+export function makeStore() {         // ← returns a new store every time called
+  const store = configureStore({ ... });
+  const persistor = persistStore(store);
+  return { store, persistor };
+}
+```
+
+```tsx
+// store/StoreProvider.tsx
+export default function StoreProvider({ children }) {
+  const storeRef = useRef(null);
+  if (!storeRef.current) {
+    storeRef.current = makeStore();   // ← create once per React tree, not per module
+  }
+  return (
+    <Provider store={storeRef.current.store}>
+      <PersistGate persistor={storeRef.current.persistor}>
+        {children}
+      </PersistGate>
+    </Provider>
+  );
+}
+```
+
+**Why the difference?**
+
+Next.js runs code on both the **server** and the **browser**. If you create the
+store at the module level (singleton), it gets shared across every user's
+request on the server — User A's data leaks into User B's session. The factory
+pattern ensures each React tree gets its own isolated store.
+
+### SSR-safe storage
+
+```ts
+// React SPA — always localStorage, always works
+import storage from "redux-persist/lib/storage";
+
+// Next.js — no localStorage on the server, so we need a fallback
+function createNoopStorage() {
+  return {
+    getItem() { return Promise.resolve(null); },  // server: pretend storage is empty
+    setItem(_key, value) { return Promise.resolve(value); },
+    removeItem() { return Promise.resolve(); },
+  };
+}
+const storage = typeof window !== "undefined"
+  ? createWebStorage("local")   // browser: use real localStorage
+  : createNoopStorage();         // server: use fake no-op
+```
+
+---
+
+## 7. Components — `'use client'` directive
+
+React SPA components run **only in the browser** — always. So they can freely
+use hooks (`useState`, `useEffect`), event handlers (`onClick`), browser APIs
+(`navigator.clipboard`, `localStorage`), and Redux selectors.
+
+In Next.js, **components can run on the server by default**. The server has no
+`window`, no `localStorage`, no Redux store in memory. You must explicitly
+label interactive components:
+
+```tsx
+"use client";   // ← top of file, tells Next.js: "only run this in the browser"
+
+import { useState } from "react";
+import { useAppSelector } from "@/store/hooks";  // Redux — needs browser
+```
+
+### Which components got `'use client'` added
+
+| Component | Why |
+|---|---|
+| `Navbar.tsx` | Uses Redux selector, `usePathname()` |
+| `NotificationStack.tsx` | Uses Redux, `useEffect`, `framer-motion` |
+| `SyncIndicator.tsx` | Uses Redux selector |
+| `SyncEngine.tsx` | Uses Redux, `useEffect`, fetch |
+| `CodeBlock.tsx` | Uses `useState` + `navigator.clipboard` |
+| `CodeEditor.tsx` | CodeMirror touches the DOM |
+| `CodeExercise.tsx` | Uses Redux dispatch + `useState` |
+| `QuizExercise.tsx` | Uses Redux + `useState` |
+| `FillExercise.tsx` | Uses `useState` |
+| All `app/page.tsx` files | Use Redux selectors |
+
+> `LessonContent.tsx` and `SimulatedBrowser.tsx` are **pure** (no hooks, no
+> Redux) so they work fine as server components — no directive needed.
+
+### CodeEditor — dynamic import
+
+CodeMirror directly touches the DOM on import. If Next.js tried to render it on
+the server, it would crash. Solution: load it lazily, only in the browser:
+
+```tsx
+// React SPA — just import it
+import CodeMirror from "@uiw/react-codemirror";
+
+// Next.js — dynamic import inside useEffect (runs only client-side)
+useEffect(() => {
+  Promise.all([
+    import("@uiw/react-codemirror"),
+    import("@codemirror/theme-one-dark"),
+    import("@codemirror/lang-javascript"),
+  ]).then(([cm, { oneDark }, { javascript }]) => {
+    setCM({ CodeMirror: cm.default, oneDark, javascript });
+  });
+}, []);
+
+// Show a skeleton while the editor loads
+if (!CM) return <div>Loading editor…</div>;
+```
+
+---
+
+## 8. The shell / Layout component
+
+### React SPA — `Layout.tsx` + `<Outlet />`
+
+`Layout.tsx` is a React Router concept. It renders the nav, then `<Outlet />`
+which is a placeholder that React Router fills with the active page:
+
+```tsx
+// Layout.tsx
+export const Layout = () => (
+  <div>
+    <header>...</header>
+    <main>
+      <AnimatePresence>
+        <motion.div key={location.pathname}>
+          <Outlet />    {/* ← active page renders HERE */}
+        </motion.div>
+      </AnimatePresence>
+    </main>
+    <NotificationStack />
+    <SyncEngine />
+  </div>
+);
+```
+
+It gets wired in `App.tsx` as a parent route:
+```tsx
+<Route element={<Layout />}>   {/* parent */}
+  <Route path="/" element={<HomePage />} />   {/* child → fills Outlet */}
+```
+
+### Next.js — `app/layout.tsx` + `{children}`
+
+`app/layout.tsx` is the equivalent. Instead of `<Outlet />` it receives
+`children` as a prop — Next.js automatically passes the current page in:
+
+```tsx
+// app/layout.tsx
+export default function RootLayout({ children }) {
+  return (
+    <html><body>
+      <StoreProvider>
+        <Navbar />
+        <main>{children}</main>   {/* ← active page renders HERE */}
+        <NotificationStack />
+        <SyncEngine />
+      </StoreProvider>
+    </body></html>
+  );
+}
+```
+
+> **In the SPA**, `Layout.tsx` also renders the `<html>` and `<body>` tags via
+> `index.html` (handled by Vite). **In Next.js**, `app/layout.tsx` renders them
+> directly in the JSX.
+
+---
+
+## 9. CSS / Styling
+
+| | `next-quest` | `next-quest-nextjs` |
+|---|---|---|
+| **Framework** | Tailwind CSS v3 | Tailwind CSS v4 |
+| **Config file** | `tailwind.config.ts` | None — config lives in CSS |
+| **Custom tokens** | `theme: { extend: { colors: {...} } }` in `.ts` | `@theme { --color-brand-300: ...; }` in CSS |
+| **Import** | `@tailwind base/components/utilities` | `@import "tailwindcss"` |
+| **Fonts** | Loaded via `<link>` in `index.html` | `next/font/google` (self-hosted, zero shift) |
+
+Tailwind v4 moves all customization into the CSS file itself using CSS custom
+properties. There is no `tailwind.config.ts` needed.
+
+---
+
+## 10. End-to-end flow comparison
+
+### React SPA — what happens when you visit `/learn/intro-to-nextjs`
+
+```
+Browser requests /learn/intro-to-nextjs
+         ↓
+Server returns index.html + bundle.js  (same files for EVERY URL)
+         ↓
+Browser runs bundle.js
+         ↓
+Redux store created (singleton), redux-persist rehydrates from localStorage
+         ↓
+BrowserRouter reads window.location.pathname
+         ↓
+Routes matches "/learn/:slug"  →  renders <LessonPage />
+         ↓
+LessonPage calls useParams() → { slug: "intro-to-nextjs" }
+         ↓
+findLesson("intro-to-nextjs") → lesson data from curriculum.ts
+         ↓
+Page renders with lesson content + exercises
+```
+
+### Next.js — what happens when you visit `/learn/intro-to-nextjs`
+
+```
+Browser requests /learn/intro-to-nextjs
+         ↓
+Next.js server matches app/learn/[slug]/page.tsx
+         ↓
+Server renders layout.tsx shell (HTML, body, Navbar)
++ page.tsx is a "use client" component → rendered in browser
+         ↓
+HTML skeleton sent to browser immediately  ← faster first paint
+         ↓
+Browser hydrates: Redux store created via makeStore() + useRef
+redux-persist rehydrates from localStorage
+         ↓
+LessonPage receives params as Promise<{ slug: "intro-to-nextjs" }>
+React.use(params) unwraps it → { slug: "intro-to-nextjs" }
+         ↓
+findLesson("intro-to-nextjs") → lesson data from curriculum.ts
+         ↓
+Page renders with lesson content + exercises
+```
+
+---
+
+## 11. Summary of every concrete change made
+
+| What | React SPA | Next.js | Why changed |
+|---|---|---|---|
+| Entry point | `main.tsx` (you write it) | `app/layout.tsx` (framework calls it) | Next.js owns the boot sequence |
+| Router | `react-router-dom` | File-system `app/` folder | Next.js has routing built in |
+| Route params | `useParams()` hook | `use(params)` prop | Next.js 15+ made params async |
+| Navigation | `<Link to>`, `useNavigate` | `<Link href>`, `useRouter` | Different packages |
+| Active link | `<NavLink className={fn}>` | `usePathname()` comparison | Next.js has no NavLink |
+| Shell component | `Layout.tsx` with `<Outlet>` | `layout.tsx` with `{children}` | Different composition model |
+| Page components | `src/pages/*.tsx` | `src/app/*/page.tsx` | File-system routing |
+| Redux store | Module singleton | `makeStore()` factory | Prevent server-side data leakage |
+| Redux provider | Inline in `main.tsx` | `StoreProvider.tsx` component | Needs to work in React tree |
+| Persistence storage | Always `localStorage` | SSR-safe no-op on server | Server has no localStorage |
+| CodeMirror | Direct import | Dynamic `import()` in `useEffect` | Server has no DOM |
+| Client markers | None needed | `"use client"` on 10 files | Next.js components default to server |
+| Fonts | `<link>` in `index.html` | `next/font/google` | Self-hosting, no FOUT |
+| Tailwind config | `tailwind.config.ts` | `@theme` block in CSS | Tailwind v4 changed the API |
+| CSS entry | `src/index.css` | `src/app/globals.css` | Next.js convention |
+| `import` paths | `../features/...` | `@/features/...` | `@/` alias configured by Next.js |
